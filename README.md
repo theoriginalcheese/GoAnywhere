@@ -109,6 +109,31 @@ python accessory-location/tools/import_diplay_identity.py \
 
 Or set `ACCESSORY_MFI_CERT_FILE` / `ACCESSORY_MFI_KEY_FILE`.
 
+## Raids & Max Battles overlay
+
+Tick **Raids & Max Battles** under the Game Mode card to draw live raids
+(ringed by tier: grey L1-2, purple L3, orange L4, red L5, pink mega) and
+Max Battles (blue "M" diamonds) within 10 km of your spoofed position (or the
+map centre). Click one for the Pokémon, gym and a live "ends in" countdown.
+The toggle is remembered between launches.
+
+- **Data:** community scanner sites on the pogomap network, fetched via
+  `GET /api/raids?lat=&lng=&km=` (`raids.py`). The server proxies them (no
+  CORS on those sites), caches each city for 60 s and the UI polls once a
+  minute — please don't lower that.
+- **Coverage is scanner cities only:** London (`londonpogomap.com`, roughly
+  zones 1-3), New York, Singapore, Sydney and Vancouver. There's no
+  Manchester or Liverpool site, so from Chester the nearest coverage is
+  London (~250 km); outside a covered city the UI shows the
+  "no scanner coverage here" message instead of markers.
+- **Names/images:** names and form names from the WatWowMap Masterfile
+  (pogoapi.net names as fallback), cached weekly in
+  `%LOCALAPPDATA%\GoAnywhere\cache\`. Sprites are hotlinked (never bundled)
+  from [WatWowMap UICONS](https://github.com/WatWowMap/wwm-uicons-webp), falling
+  back to PokeAPI HOME sprites, then a plain Poké Ball. Pokémon artwork is
+  © Nintendo / Game Freak / The Pokémon Company / Niantic, used as fan
+  content, and is **not** covered by this repo's MIT licence.
+
 ## Getting your real location back
 
 Hit **Restore real GPS** in the UI. Unplugging and restarting the phone
@@ -132,6 +157,7 @@ spec — they are needed for the frozen Bluetooth runner.
 |---|---|
 | `desktop_app.py` | native window (pywebview) + embedded server |
 | `server.py` | aiohttp REST API + tile proxy (`/api/...`, `/tiles/...`) |
+| `raids.py` | raids / Max Battles proxy for the map overlay (pogomap network) |
 | `engine.py` | device discovery, USB worker mgmt, motion, road routing |
 | `spoof_worker.py` | persistent USB tunnel worker (JSON-line IPC) |
 | `game_mode.py` | Bluetooth iAP2 accessory runner (Game Mode) |

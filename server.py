@@ -16,6 +16,7 @@ from aiohttp import web
 
 from engine import DATA_DIR, SPEED_PRESETS, Engine, haversine_m
 from gamemode_manager import GameModeManager
+import raids as raids_mod
 
 if getattr(sys, "frozen", False):
     APP_DIR = Path(sys._MEIPASS)  # bundled resources live here
@@ -283,11 +284,29 @@ async def search(request: web.Request) -> web.Response:
     return web.json_response(out)
 
 
+async def raids(request: web.Request) -> web.Response:
+    """Raids + Max Battles near lat/lng from the pogomap scanner network."""
+    try:
+        lat = float(request.query["lat"])
+        lng = float(request.query["lng"])
+        km = min(max(float(request.query.get("km", 10)), 0.5), 50)
+        site, age, items = await raids_mod.fetch_raids_ex(lat, lng, km)
+        return web.json_response({"ok": True, "raids": items, "site": site,
+                                  "age_s": round(age)})
+    except LookupError as e:
+        return web.json_response({"ok": False, "detail": str(e)})
+    except Exception as e:  # noqa: BLE001
+        _alog(f"raids failed: {e!r}")
+        return web.json_response({"ok": False,
+                                  "detail": f"raid feed unavailable ({type(e).__name__})"})
+
+
 def make_app() -> web.Application:
     async def _cleanup(_app):
         global _tile_session
         if _tile_session is not None and not _tile_session.closed:
             await _tile_session.close()
+        await raids_mod.close()
     app = web.Application(middlewares=[_err_log])
     app.on_cleanup.append(_cleanup)
 
@@ -308,6 +327,7 @@ def make_app() -> web.Application:
     app.router.add_get("/api/history", history)
     app.router.add_get("/tiles/{z}/{x}/{y}.png", tiles)
     app.router.add_get("/api/search", search)
+    app.router.add_get("/api/raids", raids)
     app.router.add_get("/api/gamemode", gamemode_status)
     app.router.add_post("/api/gamemode/start", gamemode_start)
     app.router.add_post("/api/gamemode/stop", gamemode_stop)
