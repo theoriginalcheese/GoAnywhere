@@ -290,6 +290,13 @@ def make_app() -> web.Application:
             await _tile_session.close()
     app = web.Application(middlewares=[_err_log])
     app.on_cleanup.append(_cleanup)
+
+    async def _startup(_app):
+        # Game Mode is the Pokemon-safe feed; bring it up on launch unless
+        # the user last turned it off (preference persisted locally)
+        asyncio.create_task(gmgr.autostart())
+
+    app.on_startup.append(_startup)
     app.router.add_get("/", index)
     app.router.add_get("/api/status", status)
     app.router.add_post("/api/teleport", teleport)
