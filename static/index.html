@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GoAnywhere</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+<style>
+/* iAnyGo light theme, palette extracted from its QML resources (ui-spec.md) */
+:root{
+  --accent:#4C69FF; --accent-hover:#7087FF; --accent-press:#3D54CC;
+  --cta:#FF5E2C; --cta-hover:#FF6E41;
+  --surface:#FFFFFF; --bg:#F7F7F7;
+  --title:#111431; --body:#333333; --sec:#666666; --hint:#999999;
+  --line:#EBEBEB; --line2:#DBDBDB; --sel-bg:#F0F2FF;
+  --err:#FF6051; --ok:#2BB673;
+  --grad:linear-gradient(135deg,#5C8BFF,#9A68FF);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font:14px/1.45 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;color:var(--body)}
+#map{position:absolute;inset:0;background:#dfe6ee}
+
+/* ── top bar ── */
+.topbar{position:absolute;top:14px;left:14px;right:14px;z-index:1000;
+  display:flex;align-items:center;gap:10px;pointer-events:none}
+.brand{background:var(--surface);border-radius:8px;padding:8px 14px;
+  box-shadow:0 4px 16px rgba(0,0,0,.14);display:flex;align-items:center;gap:12px;
+  pointer-events:auto}
+.brand b{color:var(--title);font-size:15px}
+.brand .dev{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--sec)}
+.dot{width:8px;height:8px;border-radius:50%;background:#c9ced8}
+.dot.on{background:var(--ok)} .dot.spoof{background:var(--accent);animation:pulse 1.5s infinite}
+@keyframes pulse{50%{opacity:.3}}
+.modes{margin-left:auto;background:var(--surface);border-radius:8px;padding:6px;
+  display:flex;gap:4px;box-shadow:0 4px 16px rgba(0,0,0,.14);pointer-events:auto}
+.modes button{width:46px;height:44px;border:none;border-radius:6px;background:transparent;
+  cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;color:var(--sec);font-size:9px;line-height:1;padding:2px}
+.modes button svg{width:20px;height:20px;fill:currentColor}
+.modes button:hover{background:var(--sel-bg);color:var(--accent)}
+.modes button.sel{background:linear-gradient(135deg,#EDF2FF,#F0EAFF);color:var(--accent)}
+
+/* ── floating left panel (328px, iAnyGo style) ── */
+.panel{position:absolute;top:76px;left:14px;bottom:14px;width:328px;z-index:1000;
+  background:var(--surface);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.16);
+  display:flex;flex-direction:column;padding:18px;gap:14px;overflow-y:auto}
+.panel h2{font-size:16px;color:var(--title);font-weight:600}
+.panel .sub{font-size:12px;color:var(--hint);margin-top:-8px}
+label{font-size:12px;color:var(--sec);display:block;margin-bottom:4px}
+input[type=text],input[type=number]{width:100%;border:1px solid var(--line2);border-radius:4px;
+  padding:8px 10px;font-size:13px;color:var(--body);background:#fff;outline:none}
+input:focus{border-color:var(--accent)}
+.searchwrap{position:relative}
+.results{position:absolute;z-index:1200;top:100%;left:0;right:0;background:#fff;
+  border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.12);
+  max-height:230px;overflow-y:auto;display:none}
+.results div{padding:9px 12px;cursor:pointer;font-size:12.5px;border-bottom:1px solid var(--line)}
+.results div:hover{background:var(--sel-bg);color:var(--accent)}
+.row{display:flex;gap:8px}
+.row input{flex:1;min-width:0}
+.btn{border:none;border-radius:6px;padding:11px 16px;font-size:14px;cursor:pointer;
+  background:var(--accent);color:#fff;font-weight:600;width:100%}
+.btn:hover{background:var(--accent-hover)} .btn:active{background:var(--accent-press)}
+.btn.ghost{background:#fff;color:var(--body);border:1px solid var(--line2);font-weight:400}
+.btn.ghost:hover{border-color:var(--accent);color:var(--accent)}
+.speedbox{border:1px solid var(--line);border-radius:6px;padding:12px}
+.speedrow{display:flex;justify-content:space-between;font-size:12.5px;color:var(--sec);margin-bottom:6px}
+.speedrow b{color:var(--title)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.presets{display:flex;gap:6px;margin-top:8px}
+.presets button{flex:1;border:1px solid var(--line2);background:#fff;border-radius:4px;
+  padding:6px 2px;font-size:11px;cursor:pointer;color:var(--sec)}
+.presets button.sel{border-color:var(--accent);color:var(--accent);background:var(--sel-bg);font-weight:600}
+.estimate{background:var(--sel-bg);border-radius:6px;padding:10px 12px;font-size:12.5px;
+  color:var(--title);display:none;line-height:1.6}
+.estimate b{color:var(--accent)}
+.hist{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:60px}
+.hist .item{border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px;cursor:pointer}
+.hist .item:hover{border-color:var(--accent);background:var(--sel-bg)}
+.hist .item b{display:block;color:var(--title);font-weight:600}
+.hist .item span{color:var(--hint);font-size:11px}
+.section-t{font-size:12px;color:var(--hint);text-transform:uppercase;letter-spacing:.5px}
+
+/* joystick 180px ring with iAnyGo gradient */
+#joy{position:absolute;right:40px;bottom:40px;z-index:1100;width:180px;height:180px;
+  border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 6px 24px rgba(0,0,0,.16);
+  display:none;touch-action:none}
+#joy::before{content:"";position:absolute;inset:8px;border-radius:50%;
+  border:2px dashed #cdd5f8}
+#joy i{position:absolute;left:50%;top:50%;width:60px;height:60px;margin:-30px;
+  border-radius:50%;background:var(--grad);box-shadow:0 4px 12px rgba(76,105,255,.45)}
+
+#toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:3000;
+  background:#272E3B;color:#fff;padding:10px 18px;border-radius:8px;display:none;
+  font-size:13px;box-shadow:0 6px 18px rgba(0,0,0,.3);max-width:70vw}
+.hidden{display:none!important}
+.livedot{background:transparent!important;border:none!important}
+/* game mode card + wizard */
+.gm-card{margin-top:10px;border:1px solid var(--line2);border-radius:10px;
+ padding:10px 12px;background:#fff}
+.gm-head{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--title)}
+.gm-state{margin-left:auto;font-size:11px;color:var(--hint);text-transform:uppercase;letter-spacing:.4px}
+.gm-sub{font-size:11.5px;color:var(--sec);margin:4px 0 8px}
+.gm-btns{display:flex;gap:8px}
+.btn.sm{padding:6px 12px;font-size:12px}
+.wiz{position:fixed;inset:0;background:rgba(17,20,49,.45);z-index:3000;
+ display:flex;align-items:center;justify-content:center}
+.wiz-box{background:#fff;border-radius:14px;max-width:560px;width:92%;
+ max-height:88vh;overflow:auto;padding:22px 26px;box-shadow:0 18px 50px rgba(17,20,49,.35)}
+.wiz-box h2{margin:0 0 6px;font-size:19px;color:#111431}
+.wiz-intro{font-size:13px;color:#5A6072;margin:0 0 14px}
+.wiz-step{display:flex;gap:12px;align-items:flex-start;border:1px solid #E6E9F0;
+ border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#FAFBFD}
+.wiz-ic{width:26px;height:26px;flex:0 0 26px;border-radius:50%;background:#4C69FF;
+ color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.wiz-body{flex:1;font-size:13px;color:#333;display:flex;flex-direction:column;gap:4px}
+.wiz-body>span{color:#5A6072}
+.wiz-check{font-size:16px;color:#B9BFCC;min-width:22px;text-align:center}
+.wiz-step.ok .wiz-check{color:#22A06B}
+.wiz-step.ok{border-color:#BFE7D2;background:#F2FBF6}
+.wiz-step.bad .wiz-check{color:#E5484D}
+.wiz-foot{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+.wiz-status{font-size:12px;color:#5A6072}
+.livedot{background:transparent!important;border:none!important;position:relative}
+.wpnum{background:transparent!important;border:none!important}
+.wpnum b{display:flex;align-items:center;justify-content:center;width:22px;height:22px;
+ border-radius:50%;background:#4C69FF;color:#fff;font:700 11px/1 system-ui,sans-serif;
+ border:2px solid #fff;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.ld-halo{position:absolute;left:-16px;top:-16px;width:54px;height:54px;
+ border-radius:50%;background:rgba(76,105,255,.18)}
+.ld-halo.pulsing{animation:ldpulse 1.8s ease-out infinite}
+.ld-core{position:absolute;left:2px;top:2px;width:18px;height:18px;
+ border-radius:50%;background:#4C69FF;border:3px solid #fff;
+ box-shadow:0 1px 5px rgba(17,20,49,.45)}
+@keyframes ldpulse{0%{transform:scale(.55);opacity:.9}
+ 70%{transform:scale(1.05);opacity:.15}100%{transform:scale(1.05);opacity:0}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="topbar">
+  <div class="brand">
+    <b>GoAnywhere</b>
+    <span class="dev"><span class="dot" id="devDot"></span><span id="devName">Connect Device</span></span>
+    <span class="dev"><span class="dot" id="spooDot"></span><span id="spooState">Real GPS</span></span>
+  </div>
+  <div class="modes" id="modeBar">
+    <button data-mode="one" class="sel" title="Teleport">
+      <svg viewBox="0 0 24 24"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>Teleport</button>
+    <button data-mode="single" title="Single-Spot Movement">
+      <svg viewBox="0 0 24 24"><path d="M4 12l7-7v4h9v6h-9v4l-7-7z"/></svg>Single</button>
+    <button data-mode="multi" title="Multiple Points Route">
+      <svg viewBox="0 0 24 24"><path d="M5 5a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm14 10a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM6.5 8.5 11 12l-4.5 3.5 1 1.5 6-4.5-1.2-1 3.7-2.8-1-1.5L9 10l-3.5-3z" transform="rotate(20 12 12)"/></svg>Route</button>
+    <button data-mode="joy" title="Joystick Movement">
+      <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm-5.6 9.4A7.9 7.9 0 0 1 5 12h2a6 6 0 0 0 1.2 3.6l-1.8 1.8zm11.2 0-1.8-1.8A6 6 0 0 0 17 12h2c0 1.1-.3 2.2-.8 3.2z"/></svg>Joystick</button>
+    <button data-mode="gpx" title="GPX route playback (drag a .gpx anywhere)">
+      <svg viewBox="0 0 24 24"><path d="M12 3 5 10h4v7h6v-7h4l-7-7zm-7 16h14v2H5v-2z"/></svg>GPX</button>
+  </div>
+</div>
+
+<div class="panel" id="panel">
+  <div id="pTitle"><h2>Teleport</h2></div>
+  <div class="sub" id="pSub">Search a place or click anywhere on the map</div>
+
+  <div class="searchwrap">
+    <label>Address / GPS Coordinates</label>
+    <input type="text" id="q" placeholder="Search a place or paste 'lat, lng'…" autocomplete="off">
+    <div class="results" id="res"></div>
+  </div>
+  <div class="row">
+    <input type="number" id="lat" step="any" placeholder="Latitude">
+    <input type="number" id="lng" step="any" placeholder="Longitude">
+  </div>
+
+  <div class="speedbox">
+    <div class="speedrow"><span>Speed</span><span><b id="spdVal">7.0 km/h</b> · <span id="spdMs">1.9 m/s</span></span></div>
+    <input type="range" id="spd" min="0.1" max="30" step="0.1" value="7">
+    <div class="presets" id="presets">
+      <button data-kmh="0.1">0.1</button>
+      <button data-kmh="7" class="sel">🚶 Walk</button>
+      <button data-kmh="19">🚴 Bike</button>
+      <button data-kmh="30">🚗 Drive</button>
+    </div>
+  </div>
+
+  <div class="estimate" id="est"></div>
+
+  <label class="roadopt hidden" id="roadsOpt"><input type="checkbox" id="roads" checked> Follow roads (real routing)</label>
+
+  <button class="btn" id="btnGo">Move here</button>
+  <input type="file" id="gpxFile" accept=".gpx,.GPX" style="display:none">
+  <button class="btn ghost hidden" id="btnStop">Stop movement</button>
+  <button class="btn ghost hidden" id="btnClearMulti">Clear route points</button>
+  <button class="btn ghost" id="btnClear" title="Stop spoofing and restore the phone's real GPS">Restore real GPS</button>
+
+  <div class="gm-card" id="gmCard">
+    <div class="gm-head">
+      <span class="dot" id="gmDot"></span>
+      <b>Game Mode</b>
+      <span class="gm-state" id="gmState">off</span>
+    </div>
+    <div class="gm-sub" id="gmSub">Bluetooth trust link for Pokémon GO (fixes Error 12)</div>
+    <div class="gm-btns">
+      <button class="btn ghost sm" id="gmToggle">Turn on</button>
+      <button class="btn ghost sm" id="gmWizard">Setup guide…</button>
+      <button class="btn sm hidden" id="gmRepair">Fix pairing</button>
+    </div>
+  </div>
+
+  <div class="section-t" style="margin-top:4px">History</div>
+  <div class="hist" id="hist"></div>
+</div>
+
+<div id="joy"><i></i></div>
+
+<div class="wiz hidden" id="wiz">
+  <div class="wiz-box">
+    <h2>Game Mode setup</h2>
+    <p class="wiz-intro">Five quick steps so Pokémon GO trusts the location.
+      Coordinates go over the USB cable; Bluetooth is what makes the phone
+      treat them as coming from a real GPS accessory.</p>
+    <div class="wiz-step" id="ws1"><div class="wiz-ic">1</div><div class="wiz-body">
+      <b>Connect the iPhone by USB</b>
+      <span>Use a data cable and trust this computer if asked.</span>
+    </div><div class="wiz-check" id="wc1">…</div></div>
+    <div class="wiz-step" id="ws2"><div class="wiz-ic">2</div><div class="wiz-body">
+      <b>Pair Bluetooth with this PC</b>
+      <span>iPhone → Settings → Bluetooth → <em>your PC's name</em> → Pair.
+      On iOS 18+ connect it from the Control Centre Bluetooth panel too.
+      If pairing fails, ignore the device on both sides and retry.</span>
+      <button class="btn ghost sm" id="wzBT">Open Bluetooth settings</button>
+    </div><div class="wiz-check" id="wc2">…</div></div>
+    <div class="wiz-step" id="ws3"><div class="wiz-ic">3</div><div class="wiz-body">
+      <b>Connect the GPS accessory</b>
+      <span id="wz3msg">Starts the Bluetooth accessory session. On the phone,
+      tap “Pair/Connect” if a prompt appears.</span>
+      <button class="btn sm" id="wzStart">Connect</button>
+    </div><div class="wiz-check" id="wc3">…</div></div>
+    <div class="wiz-step" id="ws4"><div class="wiz-ic">4</div><div class="wiz-body">
+      <b>Refresh the phone's location</b>
+      <span>On the iPhone: turn <em>Location Services</em>, <em>Cellular</em>
+      and <em>Wi-Fi</em> off, count to 10, turn them back on.
+      (Settings → Privacy &amp; Security → Location Services.)</span>
+    </div><div class="wiz-check" id="wc4">•</div></div>
+    <div class="wiz-step" id="ws5"><div class="wiz-ic">5</div><div class="wiz-body">
+      <b>Open Pokémon GO</b>
+      <span>Give it up to 30 s. No Error 12 means you're in. Keep the cable
+      and this window open while playing.</span>
+    </div><div class="wiz-check" id="wc5">•</div></div>
+    <div class="wiz-foot">
+      <span class="wiz-status" id="wizStatus"></span>
+      <button class="btn sm" id="wizClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="/static/vendor/leaflet/leaflet.js"></script>
+<script>
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+let mode="one", kmh=7, pin=null, multiPts=[], multiLine=null, multiMarkers=[];
+
+const map=L.map("map",{zoomControl:false}).setView([51.5007,-0.1246],15);
+L.control.zoom({position:"bottomright"}).addTo(map);
+let tilesLoaded=0, tilesErrored=0;
+const tiles=L.tileLayer("/tiles/{z}/{x}/{y}.png",{
+  attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom:20, errorTileUrl:""}).addTo(map);
+tiles.on("load",()=>{tilesLoaded++;});
+tiles.on("tileerror",()=>{tilesErrored++;});
+setTimeout(()=>{if(tilesLoaded===0&&tilesErrored>0)toast("No map tiles — check internet connection",5000);},10000);
+
+function toast(m,ms=2600){const t=$("#toast");t.textContent=m;t.style.display="block";
+  clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",ms);}
+async function api(p,body){const r=await fetch("/api/"+p,{method:body?"POST":"GET",
+  headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
+  return r.json();}
+const hav=(a,b)=>{const R=6371000,r=x=>x*Math.PI/180,
+  h=Math.sin(r(b[0]-a[0])/2)**2+Math.cos(r(a[0]))*Math.cos(r(b[0]))*Math.sin(r(b[1]-a[1])/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));};
+const pathLen=pts=>pts.slice(1).reduce((s,p,i)=>s+hav(pts[i],p),0);
+const fmtDur=s=>s>=3600?`${Math.floor(s/3600)} h ${Math.round(s%3600/60)} min`:
+  s>=60?`${Math.round(s/60)} min`:`${Math.round(s)} s`;
+
+function setPin(lat,lng){
+  if(!pin){pin=L.marker([lat,lng],{draggable:true,icon:L.divIcon({className:"",
+    html:'<svg width="30" height="42" viewBox="0 0 30 42"><path d="M15 0C6.7 0 0 6.7 0 15c0 11 15 27 15 27s15-16 15-27C30 6.7 23.3 0 15 0z" fill="#4C69FF"/><circle cx="15" cy="14" r="6" fill="#fff"/></svg>',
+    iconAnchor:[15,42]})}).addTo(map);
+    pin.on("dragend",()=>{const p=pin.getLatLng();$("#lat").value=p.lat.toFixed(6);$("#lng").value=p.lng.toFixed(6);
+      if(mode==="multi"&&multiPts.length){multiPts[multiPts.length-1]=[p.lat,p.lng];renderMulti();}   // pin = last waypoint
+      updateEst();});
+  } else pin.setLatLng([lat,lng]);
+  $("#lat").value=Number(lat).toFixed(6); $("#lng").value=Number(lng).toFixed(6);
+  updateEst();
+}
+function removePin(){if(pin){map.removeLayer(pin);pin=null;}$("#lat").value="";$("#lng").value="";}
+// route mode: earlier clicks are numbered dots, the last click is THE pin
+const numIcon=n=>L.divIcon({className:"wpnum",iconSize:[22,22],iconAnchor:[11,11],html:`<b>${n}</b>`});
+function renderMulti(){
+  multiMarkers.forEach(m=>map.removeLayer(m));multiMarkers=[];
+  if(multiLine){map.removeLayer(multiLine);multiLine=null;}
+  multiPts.slice(0,-1).forEach((p,i)=>multiMarkers.push(
+    L.marker(p,{icon:numIcon(i+1),interactive:false}).addTo(map)));
+  const plan=[...(window.lastPos?[window.lastPos]:[]),...multiPts];
+  if(plan.length>=2)multiLine=L.polyline(plan,{color:"#4C69FF",weight:3,dashArray:"6 6",interactive:false}).addTo(map);
+  updateEst();
+}
+function clearMulti(dropPin){multiPts=[];renderMulti();if(dropPin)removePin();}
+function placeTarget(lat,lng){   // map click / search / history all land here
+  if(mode==="multi"){multiPts.push([lat,lng]);setPin(lat,lng);renderMulti();}
+  else setPin(lat,lng);
+}
+function curTarget(){const a=parseFloat($("#lat").value),b=parseFloat($("#lng").value);
+  return isNaN(a)||isNaN(b)?null:[a,b];}
+
+function updateEst(){
+  const t=curTarget(), e=$("#est");
+  if(mode==="one"||mode==="joy"||!t){e.style.display="none";return;}
+  let pts=null;
+  if(mode==="multi"&&multiPts.length){pts=[...(window.lastPos?[window.lastPos]:[]),...multiPts];}
+  else if(window.lastPos)pts=[window.lastPos,t];
+  if(!pts||pts.length<2){e.style.display="none";return;}
+  const d=pathLen(pts), dur=d/(kmh*1000/3600);
+  e.style.display="block";
+  e.innerHTML=`Distance <b>${d>=1000?(d/1000).toFixed(2)+" km":Math.round(d)+" m"}</b> ·
+    ETA <b>${fmtDur(dur)}</b> at ${kmh.toFixed(1)} km/h`;
+}
+
+// live position + planned route
+let routeLine=null, routeKey="", liveDot=null, lastFit=0;
+function drawRoute(path, running){
+  if(!path||path.length<2||!running){
+    if(routeLine){map.removeLayer(routeLine);routeLine=null;routeKey="";}
+    return;
+  }
+  const key=path.length+":"+path[0].join()+":"+path[path.length-1].join();
+  if(key!==routeKey){
+    if(routeLine)map.removeLayer(routeLine);
+    routeLine=L.polyline(path,{color:"#4C69FF",weight:5,opacity:.85,
+      dashArray:null,lineJoin:"round"}).addTo(map);
+    routeKey=key;
+    const b=routeLine.getBounds();
+    // only re-frame for real routes: skip tiny hops (joystick) and
+    // rate-limit so frequent path updates do not yank the view around
+    const span=Math.max(b.getNorth()-b.getSouth(),
+      (b.getEast()-b.getWest())*Math.cos(b.getCenter().lat*Math.PI/180));
+    const now=Date.now();
+    if(span>0.0008&&now-lastFit>8000){map.fitBounds(b.pad(0.25));lastFit=now;}
+  }
+}
+function updateLive(pos,spoofing){
+  if(!pos){if(liveDot){map.removeLayer(liveDot);liveDot=null;}return;}
+  const icon=L.divIcon({className:"livedot",iconSize:[22,22],iconAnchor:[11,11],
+    html:'<div class="ld-halo'+(spoofing?" pulsing":"")+'"></div>'+
+         '<div class="ld-core"></div>'});
+  if(!liveDot)liveDot=L.marker(pos,{icon,zIndexOffset:1000,
+    interactive:false}).addTo(map);
+  else{liveDot.setLatLng(pos);liveDot.setIcon(icon);}
+}
+
+// status
+let pollBusy=false,pollTimer=null;
+function schedulePoll(ms){clearTimeout(pollTimer);pollTimer=setTimeout(poll,ms);}
+function kick(){schedulePoll(200);}   // refresh UI right after an action
+async function poll(){
+  if(pollBusy){schedulePoll(300);return;}
+  pollBusy=true;
+  let running=false;
+  try{
+    const s=await api("status");
+    window.lastStatus=s;
+    window.lastPos=s.current;
+    $("#devDot").className="dot"+(s.device?" on":"");
+    $("#devName").textContent=s.device?`${s.device.DeviceName} · iOS ${s.device.ProductVersion}`:"Connect Device";
+    $("#spooDot").className="dot"+(s.spoofing?" spoof":"");
+    $("#spooState").textContent=s.spoofing?(s.feed==="bluetooth"?"Simulating GPS · Bluetooth ✓":"Simulating GPS"):"Real GPS";
+    if(multiLine&&s.current)multiLine.setLatLngs([s.current,...multiPts]);   // keep preview anchored to live pos
+    running=s.motion&&s.motion.state==="running";
+    drawRoute(s.motion&&s.motion.path,
+      s.motion&&(s.motion.state==="running"||s.motion.state==="paused"));
+    updateLive(s.current,s.spoofing);   // like iAnyGo: always show current pos
+    $("#btnStop").classList.toggle("hidden",
+      !(running||(s.motion&&s.motion.state==="paused")));
+    updateEst();
+    if(s.error&&Date.now()-(window.errShown||0)>15000){window.errShown=Date.now();toast("⚠ "+s.error,5000);}
+  }catch(e){$("#devDot").className="dot";$("#devName").textContent="server down";}
+  pollBusy=false;
+  schedulePoll(running?1000:2500);
+}
+poll();
+window.addEventListener("unhandledrejection",e=>
+  toast("⚠ "+((e.reason&&e.reason.message)||"request failed")));
+
+// history
+async function loadHist(){
+  const h=await api("history");const el=$("#hist");el.innerHTML="";
+  h.slice(0,60).forEach(e=>{
+    const end=e.endCoordinate||{};
+    if(end.latitude==null||end.longitude==null)return;   // skip malformed rows
+    const d=document.createElement("div");d.className="item";
+    d.innerHTML=`<b>${e.type===1?"⚡":"🛣"} ${end.latitude?.toFixed(4)}, ${end.longitude?.toFixed(4)}</b>
+      <span>${e.distance>=1000?(e.distance/1000).toFixed(1)+" km":e.distance+" m"} · ${new Date(e.collectTimestamp).toLocaleString()}</span>`;
+    d.onclick=()=>{placeTarget(end.latitude,end.longitude);map.setView([end.latitude,end.longitude],16);};
+    el.appendChild(d);});
+}
+
+// modes
+const titles={one:["Teleport","Search a place or click anywhere on the map","Move here"],
+ single:["Single-Spot Movement","Walk in a straight line to the target — speed adjustable at any time","Start moving"],
+ multi:["Multiple Points Route","Click waypoints on the map, then start the route","Start route"],
+ joy:["Joystick Movement","Drag the joystick to stroll at your chosen speed","Joystick active"],
+ gpx:["GPX Route","Drag a .gpx file anywhere onto the window to play it","Load route"]};
+$$(".modes button").forEach(b=>b.onclick=()=>{
+  if(mode==="multi"&&b.dataset.mode!=="multi")clearMulti(false);   // don't leak waypoints; pin stays
+  $$(".modes button").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");
+  mode=b.dataset.mode;const t=titles[mode];
+  $("#pTitle").innerHTML=`<h2>${t[0]}</h2>`;$("#pSub").textContent=t[1];
+  $("#btnGo").textContent=t[2];
+  $("#btnClearMulti").classList.toggle("hidden",mode!=="multi");
+  $("#roadsOpt").classList.toggle("hidden",mode!=="single"&&mode!=="multi");
+  $("#joy").style.display=mode==="joy"?"block":"none";
+  if(mode==="one"||mode==="joy")$("#est").style.display="none"; else updateEst();
+});
+
+// speed
+function setSpeed(v){kmh=v;$("#spd").value=v;$("#spdVal").textContent=v.toFixed(1)+" km/h";
+  $("#spdMs").textContent=(v/3.6).toFixed(1)+" m/s";
+  $$("#presets button").forEach(x=>x.classList.toggle("sel",parseFloat(x.dataset.kmh)===v));
+  updateEst();}
+$$("#presets button").forEach(b=>b.onclick=()=>setSpeed(parseFloat(b.dataset.kmh)));
+$("#spd").oninput=()=>setSpeed(parseFloat($("#spd").value));
+
+// map click
+map.on("click",ev=>placeTarget(ev.latlng.lat,ev.latlng.lng));
+$("#btnClearMulti").onclick=()=>{clearMulti(true);$("#est").style.display="none";};
+
+// go
+$("#btnGo").onclick=async()=>{
+ try{
+  if(mode==="gpx"){const f=$("#gpxFile");if(f)f.click();return;}
+  if(mode==="multi"){
+    if(multiPts.length<1)return toast("Click at least one waypoint on the map");
+    const dest=multiPts[multiPts.length-1];   // last waypoint IS the destination
+    const wps=[...(window.lastPos?[{lat:window.lastPos[0],lng:window.lastPos[1]}]:[]),
+      ...multiPts.map(p=>({lat:p[0],lng:p[1]}))];
+    const r=await api("move",{lat:dest[0],lng:dest[1],speed_kmh:kmh,waypoints:wps,roads:$("#roads").checked});
+    toast(r.ok?`Route started · ${r.distance_m} m · ETA ${fmtDur(r.eta_s)}`:("Error: "+r.detail));
+    kick();return;
+  }
+  const t=curTarget();
+  if(!t)return toast("Pick a location first — click the map or search");
+  if(mode==="single"){
+    const r=await api("move",{lat:t[0],lng:t[1],speed_kmh:kmh,roads:$("#roads").checked});
+    toast(r.ok?`Moving · ${r.distance_m} m · ETA ${fmtDur(r.eta_s)}`:("Error: "+r.detail));
+  } else if(mode==="one"){
+    const r=await api("teleport",{lat:t[0],lng:t[1]});
+    toast(r.ok?"Location set ✓":("Error: "+r.detail));loadHist();
+  }
+  kick();
+ }catch(e){toast("⚠ "+(e.message||e));}
+};
+$("#btnStop").onclick=async()=>{try{await api("stop",{});toast("Movement stopped");kick();}catch(e){toast("⚠ "+e);}};
+$("#btnClear").onclick=async()=>{try{const r=await api("clear",{});
+  toast(r.ok?"Real GPS restored":"Error: "+r.detail);kick();}catch(e){toast("⚠ "+e);}};
+
+// search
+let sT,sSeq=0;$("#q").oninput=()=>{clearTimeout(sT);sT=setTimeout(async()=>{
+  const q=$("#q").value.trim();if(q.length<3)return $("#res").style.display="none";
+  const m=q.match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)$/);
+  if(m){placeTarget(parseFloat(m[1]),parseFloat(m[2]));map.setView([m[1],m[2]],16);
+    $("#res").style.display="none";return;}
+  const seq=++sSeq;
+  const h=await api("search?q="+encodeURIComponent(q));const el=$("#res");
+  if(seq!==sSeq)return;                      // a newer query already answered
+  if(!Array.isArray(h)||!h.length)return el.style.display="none";
+  el.innerHTML="";el.style.display="block";
+  h.forEach(x=>{const d=document.createElement("div");
+    d.textContent=x.name;d.onclick=()=>{placeTarget(x.lat,x.lng);map.setView([x.lat,x.lng],16);
+      el.style.display="none";};el.appendChild(d);});
+},400);};
+document.addEventListener("click",e=>{if(!e.target.closest(".searchwrap"))$("#res").style.display="none";});
+
+// joystick
+const joy=$("#joy"),knob=joy.querySelector("i");let joyOn=false,joyTimer=null,joyLast=[0,0];
+function joySend(dx,dy){fetch("/api/joystick",{method:"POST",
+  headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({dx,dy,speed_kmh:kmh})}).catch(()=>{});}
+joy.addEventListener("pointerdown",e=>{joyOn=true;joy.setPointerCapture(e.pointerId);});
+joy.addEventListener("pointermove",e=>{
+  if(!joyOn)return;
+  const r=joy.getBoundingClientRect();
+  let dx=(e.clientX-r.left-r.width/2)/(r.width/2),dy=(e.clientY-r.top-r.height/2)/(r.height/2);
+  const m=Math.hypot(dx,dy);if(m>1){dx/=m;dy/=m;}
+  knob.style.transform=`translate(${dx*52}px,${dy*52}px)`;
+  joyLast=[dx,-dy];
+  if(!joyTimer){        // throttle: send every 200 ms with the latest vector
+    joyTimer=setTimeout(()=>{joyTimer=null;joySend(joyLast[0],joyLast[1]);},200);
+  }
+});
+function joyEnd(){joyOn=false;knob.style.transform="";
+  clearTimeout(joyTimer);joyTimer=null;joySend(0,0);}
+joy.addEventListener("pointerup",joyEnd);
+joy.addEventListener("pointercancel",joyEnd);
+joy.addEventListener("lostpointercapture",()=>{if(joyOn)joyEnd();});
+
+// Game Mode: panel card + setup wizard
+const gmPhaseText={off:"off",starting:"starting…",paired:"paired",
+ authenticated:"connected",streaming:"streaming ✓",reconnecting:"reconnecting…",
+ error:"error"};
+let gmState={phase:"off",running:false};
+async function pollGM(){
+  try{
+    const s=await api("gamemode");gmState=s;
+    $("#gmDot").className="dot"+(s.phase==="streaming"||s.phase==="authenticated"?" on":
+      s.phase==="error"?" spoof":"");
+    $("#gmState").textContent=gmPhaseText[s.phase]||s.phase;
+    $("#gmSub").textContent=s.detail||
+      "Bluetooth trust link for Pokémon GO (fixes Error 12)";
+    $("#gmToggle").textContent=s.running?"Turn off":"Turn on";
+    $("#gmRepair").classList.toggle("hidden",
+      !/trust|pairing|savepairrecord|denied/i.test(
+        ((window.lastStatus||{}).error||"")+" "+(gmState.detail||"")));
+    if(!$("#wiz").classList.contains("hidden"))syncWizard();
+  }catch(e){}
+}
+setInterval(pollGM,2000);pollGM();
+$("#gmToggle").onclick=async()=>{
+  try{
+    if(gmState.running)await api("gamemode/stop",{});
+    else await api("gamemode/start",{});
+    pollGM();
+  }catch(e){toast("⚠ "+(e.message||e));}
+};
+$("#gmWizard").onclick=()=>{$("#wiz").classList.remove("hidden");syncWizard(true);};
+$("#gmRepair").onclick=async()=>{
+  try{
+    toast("Clearing pairing — unlock your iPhone and watch for the Trust prompt");
+    const p=await api("pairing/reset",{});
+    if(p.failed&&p.failed.length)
+      toast("⚠ Some pairing files need admin rights — run GoAnywhere as admin once");
+    setTimeout(async()=>{
+      const r=await api("clear",{}).catch(e=>({ok:false,detail:String(e)}));
+      toast(r.ok?"Pairing cleared — tap “Trust” on the iPhone if asked"
+                :"Still failing: "+(r.detail||""));
+      kick();
+    },600);
+  }catch(e){toast("⚠ "+(e.message||e));}
+};
+$("#wizClose").onclick=()=>$("#wiz").classList.add("hidden");
+$("#wzBT").onclick=()=>api("open-bt-settings",{}).catch(()=>{});
+$("#wzStart").onclick=async()=>{
+  try{const r=await api("gamemode/start",{});
+    if(!r.ok)toast("⚠ "+(r.detail||"could not start"));pollGM();
+  }catch(e){toast("⚠ "+(e.message||e));}
+};
+let wizBT=null,wizBTat=0;
+async function syncWizard(force){
+  // step 1: USB device present
+  const st=await api("status").catch(()=>null);
+  setStep(1,!!(st&&st.device));
+  // step 2: BT paired (cache the WinRT check, it is slower)
+  if(force||!wizBT||Date.now()-wizBTat>6000){
+    wizBTat=Date.now();
+    api("bluetooth").then(b=>{wizBT=b;renderBT();}).catch(()=>{});
+  } else renderBT();
+  // step 3: accessory connected
+  const p=gmState.phase;
+  setStep(3,p==="authenticated"||p==="streaming");
+  $("#wz3msg").textContent=
+    p==="error"?("Last try failed: "+(gmState.detail||"phone off or out of range")+" — try again.")
+    :p==="streaming"?"Connected — the iPhone is taking location from us ✓"
+    :p==="authenticated"?"Connected ✓ — waiting for the iPhone to ask for fixes."
+    :gmState.running?"Connecting… keep the phone unlocked and nearby."
+    :"Starts the Bluetooth accessory session. On the phone, tap “Pair/Connect” if a prompt appears.";
+  $("#wzStart").textContent=gmState.running?"Retrying…":"Connect";
+  // step 4: iPhone has actually asked for at least one location fix
+  setStep(4,(gmState.fixes||0)>0);
+  // step 5 (open Pokémon GO) is manual — ticked once fixes flow too
+  setStep(5,(gmState.fixes||0)>0);
+  $("#wizStatus").textContent=p==="streaming"
+    ?"All good — GPS fixes are flowing to the iPhone."
+    :p==="authenticated"?"Accessory connected. Do step 4, then open Pokémon GO."
+    :gmState.running?"Working… this takes about 30 s after the phone answers."
+    :"Complete each step; ticks update automatically.";
+}
+function renderBT(){setStep(2,!!(wizBT&&wizBT.paired));}
+function setStep(n,ok){
+  const el=$("#ws"+n);el.classList.toggle("ok",!!ok);
+  $("#wc"+n).textContent=ok?"✓":"…";
+}
+async function playGpx(file){
+  if(!file||!file.name.toLowerCase().endsWith(".gpx"))return;
+  try{
+    const gpx=await file.text();const r=await api("gpx",{gpx,speed_kmh:kmh});
+    toast(r.ok?`GPX loaded · ${r.points} points · playing`:(`Error: ${r.detail||"parse"}`));
+    kick();
+  }catch(e){toast("⚠ "+(e.message||e));}
+}
+document.body.addEventListener("dragover",e=>e.preventDefault());
+document.body.addEventListener("drop",e=>{
+  e.preventDefault();playGpx(e.dataTransfer.files[0]);
+});
+const gpxFile=$("#gpxFile");
+if(gpxFile)gpxFile.onchange=()=>playGpx(gpxFile.files[0]);
+loadHist();
+</script>
+</body>
+</html>

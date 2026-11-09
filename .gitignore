@@ -1,0 +1,35 @@
+# build & packaging output
+dist/
+dist_console/
+build/
+*.spec.bak
+
+# python
+__pycache__/
+.venv/
+*.pyc
+
+# runtime state (lives in %LOCALAPPDATA% too, but never commit stray copies)
+data/
+*.log
+tunnel.err
+tunnel.log
+server.log
+devserver.log
+sim.out
+gaw_console_out.txt
+admin.txt
+
+# reverse-engineering scratch (proprietary third-party assets / notes)
+assets/
+ui-spec.md
+scratch_inline.js
+t1.png
+t2.png
+smoke_test.sh
+start_tunnel.bat
+start_tunnel_elevated.ps1
+GAWConsole.spec
+pyinstaller.log
+pyi_console.log
+check_admin.ps1

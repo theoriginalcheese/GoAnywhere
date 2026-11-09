@@ -1,0 +1,3 @@
+[submodule "ref_accessory_location"]
+	path = ref_accessory_location
+	url = https://github.com/aur3l14no/accessory-location
