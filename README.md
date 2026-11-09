@@ -86,8 +86,11 @@ ticks per step. Summary:
    panel.
 3. Import the MFi identity once (below) — the guide shows *MFi
    authentication accepted* when the iPhone buys it.
-4. Turn the iPhone's **Location Services, Wi-Fi and Cellular off**,
-   count to 10, turn them back on.
+4. Toggle the iPhone's **Airplane Mode on, count to 10, off** — one clean
+   radio refresh. Then confirm Wi-Fi rejoined (Settings → Wi-Fi → tap your
+   network): the Control Centre Wi-Fi toggle disconnects without
+   reconnecting, which leaves the phone on cellular. Location Services
+   itself stays ON throughout.
 5. Open Pokémon GO. When the wizard's fix counter ticks, the iPhone is
    pulling GPS from the app over Bluetooth.
 
