@@ -141,6 +141,21 @@ input[type=range]{width:100%;accent-color:var(--accent)}
  border:1px solid var(--line2);border-radius:10px;padding:8px 12px;background:#fff;cursor:pointer}
 .rd-opt input{accent-color:var(--accent);width:16px;height:16px;margin:0}
 .rd-opt small{margin-left:auto;font-size:11px;color:var(--hint)}
+.rd-row{display:flex;gap:6px;margin-top:8px}
+.rd-row .rd-opt{flex:1;padding:7px 8px;font-size:12px;justify-content:center;margin-top:0}
+.rd-info{font-size:11px;color:var(--hint);margin-top:4px;min-height:13px}
+/* on-marker boss art */
+.rd-pin,.rd-diamond{background:transparent!important;border:none!important}
+.rd-pin span{display:block;width:38px;height:38px;border-radius:50%;border:3px solid #9E9E9E;
+ background:#fff;position:relative;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.rd-pin img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+.rd-pin b{position:absolute;right:-5px;bottom:-5px;background:#111431;color:#fff;font-size:10px;
+ border-radius:8px;padding:0 5px;line-height:15px;font-weight:700}
+.rd-diamond span{display:block;width:30px;height:30px;margin:5px;transform:rotate(45deg);
+ border:3px solid #2979FF;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.rd-diamond img{width:120%;height:120%;transform:rotate(-45deg) translate(-8%,-8%);object-fit:cover}
+.rd-gym{background:transparent!important;border:none!important}
+.rd-gym img{width:22px;height:22px;display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
 .rd-max{background:transparent!important;border:none!important}
 .rd-max b{display:flex;align-items:center;justify-content:center;width:18px;height:18px;
  transform:rotate(45deg);background:#2979FF;border:2px solid #fff;border-radius:3px;
@@ -226,8 +241,12 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       will show Error 12. <b>Turn on Game Mode</b> to feed location over
       Bluetooth (works without the cable once paired).</div>
   </div>
-  <label class="rd-opt" title="Live raids and Max Battles from community scanner maps (scanner cities only)">
-    <input type="checkbox" id="rdToggle"> Raids &amp; Max Battles <small id="rdInfo"></small></label>
+  <div class="rd-row" title="Live data from community scanner maps (scanner cities only)">
+    <label class="rd-opt"><input type="checkbox" id="rdRaids"> Raids</label>
+    <label class="rd-opt"><input type="checkbox" id="rdMax"> Dynamax</label>
+    <label class="rd-opt"><input type="checkbox" id="rdGyms"> Gyms</label>
+  </div>
+  <div class="rd-info" id="rdInfo"></div>
 
   <div class="section-t" style="margin-top:4px">History</div>
   <div class="hist" id="hist"></div>
@@ -645,11 +664,33 @@ function rdPopup(r){const col=r.kind==="max"?"#2979FF":(RD_COL[r.level]||"#9E9E9
     :`<img src="${RD_BALL}">`;
   return `<div class="rd-pop">${img}<div><b>${rdEsc(r.name)}</b><br>${rdEsc(r.gym||"Unknown gym")}<br>
     <span class="rd-badge" style="background:${col}">${tag}</span><span class="rd-left" data-end="${r.end}">${rdLeft(r.end)}</span></div></div>`;}
-function rdDraw(list){rdLayer.clearLayers();
-  for(const r of list){let m;
-    if(r.kind==="max")m=L.marker([r.lat,r.lng],{icon:L.divIcon({className:"rd-max",html:"<b><i>M</i></b>",iconSize:[18,18],iconAnchor:[9,9]})});
-    else m=L.circleMarker([r.lat,r.lng],{radius:8,color:RD_COL[r.level]||"#9E9E9E",weight:3,fillColor:"#fff",fillOpacity:.9});
-    m.bindTooltip(`${r.kind==="max"?"Max":"Raid"} L${r.level} · ${r.name}`,{direction:"top"});
+const RD_GYM="data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2l7 4v9c0 4-3.5 6.5-7 7-3.5-.5-7-3-7-7V6z" fill="#2979FF" stroke="#fff" stroke-width="1.5"/><path d="M8 9l4-2.5L16 9v4.5L12 16l-4-2.5z" fill="#fff"/></svg>');
+function rdIcon(r){
+  if(r.kind==="gym")
+    return L.divIcon({className:"rd-gym",html:`<img src="${rdEsc(r.img||RD_GYM)}">`,
+      iconSize:[22,22],iconAnchor:[11,22]});
+  const col=r.kind==="max"?"#2979FF":(RD_COL[r.level]||"#9E9E9E");
+  const boss=r.img&&!/^Egg/i.test(r.name)
+    ?`<img src="${rdEsc(r.img)}" onerror="this.onerror=null;this.src=RD_BALL">`
+    :`<img src="${RD_BALL}">`;
+  if(r.kind==="max")
+    return L.divIcon({className:"rd-diamond",html:`<span style="border-color:${col}">${boss}</span>`,
+      iconSize:[42,42],iconAnchor:[21,21]});
+  return L.divIcon({className:"rd-pin",html:`<span style="border-color:${col}">${boss}<b>${r.level}</b></span>`,
+    iconSize:[42,42],iconAnchor:[21,21]});
+}
+let rdLast=[];
+function rdDraw(){rdLayer.clearLayers();
+  const on={raid:$("#rdRaids").checked,max:$("#rdMax").checked,gym:$("#rdGyms").checked};
+  // when a raid/Max marker will be drawn, don't stack a gym pin underneath
+  const act=rdLast.filter(r=>r.kind!=="gym"&&on[r.kind]);
+  for(const r of rdLast){
+    if(!on[r.kind])continue;
+    if(r.kind==="gym"&&act.some(a=>Math.abs(a.lat-r.lat)<1e-4&&Math.abs(a.lng-r.lng)<1e-4))continue;
+    const m=L.marker([r.lat,r.lng],{icon:rdIcon(r)});
+    if(r.kind==="gym"){m.bindTooltip(rdEsc(r.gym||"Gym"),{direction:"top"});
+      rdLayer.addLayer(m);continue;}
+    m.bindTooltip(`${r.kind==="max"?"Max":"Raid"} L${r.level} · ${rdEsc(r.name)}`,{direction:"top"});
     m.bindPopup(()=>rdPopup(r),{maxWidth:240});
     let iv=null;
     m.on("popupopen",e=>{const tick=()=>{const el=e.popup.getElement();
@@ -658,20 +699,38 @@ function rdDraw(list){rdLayer.clearLayers();
     m.on("popupclose",()=>{clearInterval(iv);iv=null;});
     rdLayer.addLayer(m);}}
 async function rdRefresh(){
-  if(!$("#rdToggle").checked)return;
   const c=window.lastPos||[map.getCenter().lat,map.getCenter().lng];
   try{const r=await api(`raids?lat=${c[0]}&lng=${c[1]}&km=10`);
-    if(!$("#rdToggle").checked)return;
-    if(r.ok){rdDraw(r.raids);$("#rdInfo").textContent=`${r.raids.length} near · ${r.site.split(".")[0]}`;}
-    else{rdLayer.clearLayers();$("#rdInfo").textContent="no coverage";
+    if(!rdOn()){rdLayer.clearLayers();return;}
+    if(r.ok){rdLast=r.raids;rdDraw();
+      const nr=rdLast.filter(x=>x.kind==="raid").length,nm=rdLast.filter(x=>x.kind==="max").length,
+            ng=rdLast.filter(x=>x.kind==="gym").length,
+            bits=[];
+      if($("#rdRaids").checked)bits.push(`${nr} raids`);
+      if($("#rdMax").checked)bits.push(`${nm} dynamax`);
+      if($("#rdGyms").checked)bits.push(`${ng} gyms`);
+      $("#rdInfo").textContent=`${bits.join(" · ")} · ${r.site.split(".")[0]}`;}
+    else{rdLast=[];rdLayer.clearLayers();$("#rdInfo").textContent="no coverage";
       if(Date.now()-rdToastAt>300000){rdToastAt=Date.now();toast("Raids: "+(r.detail||"unavailable"),5000);}}
   }catch(e){$("#rdInfo").textContent="offline";}}
-function rdSet(on){localStorage.setItem("rdOn",on?"1":"0");clearInterval(rdTimer);rdTimer=null;
-  if(on){rdLayer.addTo(map);rdRefresh();rdTimer=setInterval(rdRefresh,60000);}
+function rdOn(){return $("#rdRaids").checked||$("#rdMax").checked||$("#rdGyms").checked;}
+function rdApply(){clearInterval(rdTimer);rdTimer=null;
+  if(rdOn()){rdLayer.addTo(map);rdRefresh();rdTimer=setInterval(rdRefresh,60000);}
   else{rdLayer.clearLayers();map.removeLayer(rdLayer);$("#rdInfo").textContent="";}}
-$("#rdToggle").checked=localStorage.getItem("rdOn")==="1";
-$("#rdToggle").onchange=e=>rdSet(e.target.checked);
-if($("#rdToggle").checked)setTimeout(()=>rdSet(true),1500);   // let poll() fill lastPos first
+function rdSave(){
+  localStorage.setItem("rdRaids",$("#rdRaids").checked?"1":"0");
+  localStorage.setItem("rdMax",$("#rdMax").checked?"1":"0");
+  localStorage.setItem("rdGyms",$("#rdGyms").checked?"1":"0");}
+// migration: the old single toggle switched raids AND dynamax on
+if(localStorage.getItem("rdOn")!==null&&localStorage.getItem("rdRaids")===null){
+  const on=localStorage.getItem("rdOn")==="1";
+  localStorage.setItem("rdRaids",on?"1":"0");localStorage.setItem("rdMax",on?"1":"0");
+  localStorage.setItem("rdGyms","0");}
+$("#rdRaids").checked=localStorage.getItem("rdRaids")==="1";
+$("#rdMax").checked=localStorage.getItem("rdMax")==="1";
+$("#rdGyms").checked=localStorage.getItem("rdGyms")==="1";
+for(const id of ["rdRaids","rdMax","rdGyms"])$(("#")+id).onchange=()=>{rdSave();rdDraw();rdApply();};
+if(rdOn())setTimeout(rdApply,1500);   // let poll() fill lastPos first
 </script>
 </body>
 </html>

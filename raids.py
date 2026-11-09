@@ -192,9 +192,10 @@ async def _site_data(site: str) -> tuple[dict, float]:
 
 def slim(data: dict, lat: float, lng: float, km: float, now: float | None = None) -> list:
     """Pure filter: active windows within km, nearest first,
-    max 80 raids + 70 max battles."""
+    max 80 raids + 70 max battles; also derive gym locations."""
     now = now or time.time()
     out = []
+    gyms: dict[tuple, float] = {}   # (name,lat,lng) -> nearest dist seen
     for kind, key in (("raid", "raids"), ("max", "battles")):
         for p in data.get(key) or []:
             try:
@@ -202,10 +203,16 @@ def slim(data: dict, lat: float, lng: float, km: float, now: float | None = None
                 plat, plng = float(p["lat"]), float(p["lng"])
             except (KeyError, TypeError, ValueError):
                 continue
-            if not (s <= now <= e) or e - s > MAX_WINDOW_S:
-                continue
             d = haversine_m((lat, lng), (plat, plng))
             if d > km * 1000:
+                continue
+            # the scanner only lists gyms that have raids or Max Battles —
+            # those ARE gym locations, so harvest them as a gym layer too
+            gkey = ((p.get("gym_name") or "").strip().lower(),
+                    round(plat, 5), round(plng, 5))
+            if gkey[0] and gyms.get(gkey, 1e18) > d:
+                gyms[gkey] = d
+            if not (s <= now <= e) or e - s > MAX_WINDOW_S:
                 continue
             dex, form, lvl = int(p.get("pokemon_id") or 0), int(p.get("form") or 0), int(p.get("level") or 0)
             name = display_name(dex, form, lvl)
@@ -226,6 +233,12 @@ def slim(data: dict, lat: float, lng: float, km: float, now: float | None = None
                 continue
             n_m += 1
         kept.append(x)
+    # gyms (name+coords harvested from raid/Max stations), nearest first, 300 cap
+    gl = sorted(((d, k) for k, d in gyms.items()))[:300]
+    for d, (gname, plat, plng) in gl:
+        kept.append({"kind": "gym", "gym": gname.title(), "name": "Gym",
+                     "img": "", "img_fb": "", "level": 0, "lat": plat,
+                     "lng": plng, "start": 0, "end": 0, "dist_m": round(d)})
     return kept
 
 
