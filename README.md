@@ -58,7 +58,9 @@ routes and joystick all keep working over Bluetooth.
 ## Quick start
 
 1. Plug the phone in and unlock it.
-2. Double-click **`GoAnywhere.bat`** (first run builds the venv).
+2. Launch **GoAnywhere** from the Windows Start Menu (type "GoAnywhere" —
+   run `Install-StartMenu.ps1` once to create the shortcut), or
+   double-click **`GoAnywhere.bat`** (first run builds the venv).
 3. The app window opens on a map. Pick a mode and go.
 
 Re-running the launcher is safe — it kills any old instance first.
